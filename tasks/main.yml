@@ -1,0 +1,54 @@
+---
+
+- name: Install / check security updates
+  ignore_errors: true
+  win_updates:
+    category_names:
+      - SecurityUpdates
+      - CriticalUpdates
+      - UpdateRollups
+      - DefinitionUpdates
+      - Updates
+    reboot: "{{ 'yes' if 'reboot' in ansible_run_tags else 'no' }}"
+    state: "{{ 'installed' if 'install' in ansible_run_tags else 'searched' }}"
+  become: yes
+  become_method: runas
+  become_user: SYSTEM
+  register: update_results
+  tags:
+    - never
+    - check
+    - install
+
+- name: Print return information from the previous task
+  ansible.builtin.debug:
+    var: update_results
+  tags:
+    - never
+    - check
+    - install
+
+- name: Windows update failed?
+  debug:
+    msg: "error: {{ update_results.msg }}"
+  when: update_results is failed and update_results.msg is defined
+  tags:
+    - always
+
+
+# Si un reboot est en attente, les hotfix ne s'installent pas et dans ce
+# cas il faut d'abord faire un reboot
+- name: Server had pending reboots?
+  win_reboot:
+  when: not ansible_check_mode and update_results is failed and update_results.msg is search('A reboot is required')
+  tags:
+    - never
+    - reboot
+
+- name: Report results
+  debug:
+    var: update_results
+  tags:
+  - never
+  - install
+  - check
